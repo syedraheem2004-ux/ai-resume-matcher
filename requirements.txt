@@ -2,3 +2,5 @@ google-genai
 pymupdf
 python-dotenv
 streamlit
+requests
+beautifulsoup4
