@@ -145,17 +145,36 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── API Key check ─────────────────────────────────────────────────────────────
-api_key = os.getenv("GEMINI_API_KEY") or (st.secrets.get("GEMINI_API_KEY") if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets else None)
+server_key = os.getenv("GEMINI_API_KEY") or (
+    st.secrets.get("GEMINI_API_KEY") if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets else None
+)
 
-if not api_key:
-    st.error(
-        "⚠️ **GEMINI_API_KEY not found.** "
-        "Add it to your `.env` file. "
-        "Get a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)."
+# Detect if the server key is a placeholder
+if server_key and any(placeholder in server_key.lower() for placeholder in ["your_key", "your_gemini_api_key", "placeholder"]):
+    server_key = None
+
+with st.sidebar:
+    st.header("⚙️ Settings")
+    st.markdown("This app uses Google Gemini to evaluate resumes.")
+    user_api_key = st.text_input(
+        "Gemini API Key",
+        value=server_key if server_key else "",
+        type="password",
+        help="Paste your Google Gemini API key here if not already configured in Streamlit Secrets.",
+    )
+    st.markdown("👉 Get a free Gemini API key at [Google AI Studio](https://aistudio.google.com/apikey)")
+
+api_key = (user_api_key or server_key or "").strip()
+
+if not api_key or any(placeholder in api_key.lower() for placeholder in ["your_key", "your_gemini_api_key", "placeholder"]):
+    st.warning(
+        "⚠️ **Gemini API Key Required:** Please enter your Google Gemini API key in the sidebar, "
+        "or set `GEMINI_API_KEY` in Streamlit Cloud Secrets. "
+        "Get a free key at [Google AI Studio](https://aistudio.google.com/apikey)."
     )
     st.stop()
 
-# ── Inputs ────────────────────────────────────────────────────────────────────
+# ── Inputs ───────────────────────────────────────────────────────────────────
 col_left, col_right = st.columns(2, gap="large")
 
 with col_left:
@@ -225,7 +244,7 @@ Base the score on evidence in the provided resume only."""
                 + job_description[:10000]
             )
 
-            models_to_try = ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-lite-latest"]
+            models_to_try = ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash", "gemini-flash-lite-latest"]
             response = None
             last_error = None
 
@@ -242,11 +261,18 @@ Base the score on evidence in the provided resume only."""
                     if response and response.text:
                         break
                 except Exception as err:
+                    err_msg = str(err)
+                    if "API_KEY_INVALID" in err_msg or "API key not valid" in err_msg or "INVALID_ARGUMENT" in err_msg:
+                        st.error(
+                            "❌ **Invalid Gemini API Key:** Google rejected the provided API key. "
+                            "Please enter a valid key from [Google AI Studio](https://aistudio.google.com/apikey) in the sidebar or update your Streamlit Secrets."
+                        )
+                        st.stop()
                     last_error = err
                     continue
 
             if not response or not response.text:
-                st.error(f"Gemini is currently experiencing high demand across models. Please try again shortly. Details: {last_error}")
+                st.error(f"Gemini is currently experiencing high demand. Please try again shortly. Details: {last_error}")
                 st.stop()
 
             # Clean response (strip markdown code fences if Gemini adds them)
