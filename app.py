@@ -225,20 +225,40 @@ Base the score on evidence in the provided resume only."""
                 + job_description[:10000]
             )
 
-            response = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                ),
-            )
+            models_to_try = ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-lite-latest"]
+            response = None
+            last_error = None
+
+            for model_name in models_to_try:
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_prompt,
+                            response_mime_type="application/json",
+                        ),
+                    )
+                    if response and response.text:
+                        break
+                except Exception as err:
+                    last_error = err
+                    continue
+
+            if not response or not response.text:
+                st.error(f"Gemini is currently experiencing high demand across models. Please try again shortly. Details: {last_error}")
+                st.stop()
 
             # Clean response (strip markdown code fences if Gemini adds them)
             raw = response.text.strip()
             raw = re.sub(r"^```(?:json)?\s*", "", raw)
             raw = re.sub(r"\s*```$", "", raw)
 
-            result = json.loads(raw)
+            try:
+                result = json.loads(raw)
+            except json.JSONDecodeError:
+                st.error("Received an unexpected response format from Gemini. Please try analyzing again.")
+                st.stop()
 
         # 3. Display results
         score = max(0, min(100, int(result["match_score"])))
